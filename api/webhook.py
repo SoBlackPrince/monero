@@ -1,12 +1,8 @@
-import os
 import json
-from http.server import BaseHTTPRequestHandler
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from supabase import create_client, Client
-import asyncio
+import os
+import urllib.request
 import urllib.parse
+from http.server import BaseHTTPRequestHandler
 
 BOT_TOKEN = "9018579736:AAFbUfg0YIRZnWGlEBAfw8qUC1w1xuuXbN4"
 SUPABASE_URL = "https://uhchxpzsnjcjddggqosh.supabase.co"
@@ -14,112 +10,136 @@ SUPABASE_KEY = "sb_publishable_KtMIJ4h3tDuEF_p4c_7VIg_iViLfBQf"
 TELEGRAM_USERNAME = "BestMonero"
 SITE_URL = "https://monero-store.vercel.app"
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-
-def get_main_menu():
-    kb = [
-        [InlineKeyboardButton(text="🛒 Наличие аккаунтов", callback_data="accounts")],
-        [InlineKeyboardButton(text="⭐ Купить звезды", callback_data="stars_menu")],
-        [InlineKeyboardButton(text="📖 Инструкция", callback_data="instruction")],
-        [InlineKeyboardButton(text="🌐 Наш сайт", url=SITE_URL)]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_back_menu():
-    kb = [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="main_menu")]]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer(
-        "👋 Добро пожаловать в **Monero Store**!\n\n"
-        "Здесь вы можете посмотреть наличие аккаунтов, купить звезды или прочитать инструкцию.",
-        reply_markup=get_main_menu(),
-        parse_mode="Markdown"
-    )
-
-@dp.callback_query(lambda c: c.data == "main_menu")
-async def process_main_menu(callback: types.CallbackQuery):
-    await callback.message.edit_text(
-        "👋 Главное меню **Monero Store**\nВыберите действие:",
-        reply_markup=get_main_menu(),
-        parse_mode="Markdown"
-    )
-
-@dp.callback_query(lambda c: c.data == "instruction")
-async def process_instruction(callback: types.CallbackQuery):
-    text = (
-        "📖 **Инструкция по покупке аккаунтов:**\n\n"
-        "Сайт не имеет функции оплаты аккаунтов прямо на нем, для оплаты телеграмм аккаунтов вы должны написать мне в личные сообщения и сказать какой аккаунт вы хотите купить.\n\n"
-        "**Оплата может происходить:**\n"
-        "• Рублями\n"
-        "• USDT\n"
-        "• Телеграмм звездами\n\n"
-        "При получении аккаунта заходить с впном данной страны, которой вы купили аккаунт. Советую вам отлежаться пару дней и не трогать его, чтоб телеграмм не выдал вам спамблок, за спамблок я не ручаюсь.\n\n"
-        "Приятных покупок!"
-    )
-    await callback.message.edit_text(text, reply_markup=get_back_menu(), parse_mode="Markdown")
-
-@dp.callback_query(lambda c: c.data == "accounts")
-async def process_accounts(callback: types.CallbackQuery):
-    await callback.answer("Загружаю товары...")
+def send_message(chat_id, text, reply_markup=None):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
     try:
-        response = supabase.table('products').select('*').gt('qty', 0).execute()
-        products = response.data
+        urllib.request.urlopen(req)
     except Exception as e:
-        await callback.message.edit_text("❌ Ошибка загрузки товаров.", reply_markup=get_back_menu())
-        return
+        print(f"Error sending message: {e}")
 
-    if not products:
-        await callback.message.edit_text("😔 Товаров в наличии нет.", reply_markup=get_back_menu())
-        return
-
-    await callback.message.edit_text("🛒 **Аккаунты в наличии:**", parse_mode="Markdown")
-
-    for p in products:
-        text = f"✈️ **{p['flag']} {p['country']} {p['code']}**\n\n📝 {p['short_desc']}\n💰 Цена: {p['price']}\n📦 В наличии: {p['qty']} шт."
-        msg = f"Привет! Хочу купить аккаунт {p['flag']} {p['country']} {p['code']}.\nСсылка на товар: {SITE_URL}/?item={p['id']}"
-        buy_url = f"https://t.me/{TELEGRAM_USERNAME}?text={urllib.parse.quote(msg)}"
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🛍 Купить", url=buy_url)]])
-        await callback.message.answer(text, reply_markup=kb, parse_mode="Markdown")
-
-    await callback.message.answer("Выберите действие:", reply_markup=get_back_menu())
-
-STARS_PRICE = 1.5
-
-@dp.callback_query(lambda c: c.data == "stars_menu")
-async def process_stars_menu(callback: types.CallbackQuery):
-    text = f"⭐ **Курс Monero Store**\n1.5 RUB = 1 Звезда\n\nВыберите количество звезд:"
-    kb = []
-    for amount in [50, 100, 200, 300, 400, 500, 1000]:
-        kb.append([InlineKeyboardButton(text=f"{amount} звезд", callback_data=f"buy_stars_{amount}")])
-    kb.append([InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="main_menu")])
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
-
-@dp.callback_query(lambda c: c.data.startswith("buy_stars_"))
-async def process_buy_stars(callback: types.CallbackQuery):
-    amount = int(callback.data.split("_")[2])
-    price = amount * STARS_PRICE
-    text = f"Отлично! С вас **{price} рублей** за {amount} звезд.\n\nНажмите кнопку ниже, чтобы связаться с продавцом:"
-    msg = f"Привет! Хочу купить у тебя {amount} звезд!"
-    buy_url = f"https://t.me/{TELEGRAM_USERNAME}?text={urllib.parse.quote(msg)}"
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💬 Написать продавцу", url=buy_url)], [InlineKeyboardButton(text="⬅️ Назад", callback_data="stars_menu")]])
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+def get_products():
+    url = f"{SUPABASE_URL}/rest/v1/products?select=*&qty=gt.0"
+    req = urllib.request.Request(url, headers={'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'})
+    try:
+        with urllib.request.urlopen(req) as response:
+            return json.loads(response.read().decode())
+    except Exception as e:
+        print(f"Error fetching products: {e}")
+        return []
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
-        update = types.Update.model_validate(json.loads(post_data.decode('utf-8')), context={"bot": bot})
-        
-        async def process():
-            await dp.feed_update(bot, update)
-            
-        asyncio.run(process())
-        
+        update = json.loads(post_data.decode('utf-8'))
+
+        if "message" in update:
+            chat_id = update["message"]["chat"]["id"]
+            text = update["message"].get("text", "")
+
+            if text == "/start":
+                kb = {
+                    "inline_keyboard": [
+                        [{"text": "🛒 Наличие аккаунтов", "callback_data": "accounts"}],
+                        [{"text": "⭐ Купить звезды", "callback_data": "stars_menu"}],
+                        [{"text": "📖 Инструкция", "callback_data": "instruction"}],
+                        [{"text": "🌐 Наш сайт", "url": SITE_URL}]
+                    ]
+                }
+                send_message(chat_id, "👋 Добро пожаловать в **Monero Store**!\n\nВыберите действие:", kb)
+
+        elif "callback_query" in update:
+            callback_id = update["callback_query"]["id"]
+            chat_id = update["callback_query"]["message"]["chat"]["id"]
+            message_id = update["callback_query"]["message"]["message_id"]
+            data = update["callback_query"]["data"]
+
+            # Отвечаем телеграму, чтобы убрать часики на кнопке
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
+            req = urllib.request.Request(url, data=json.dumps({"callback_query_id": callback_id}).encode('utf-8'), headers={'Content-Type': 'application/json'})
+            urllib.request.urlopen(req)
+
+            if data == "instruction":
+                text = (
+                    "📖 **Инструкция по покупке аккаунтов:**\n\n"
+                    "Сайт не имеет функции оплаты аккаунтов прямо на нем, для оплаты телеграмм аккаунтов вы должны написать мне в личные сообщения и сказать какой аккаунт вы хотите купить.\n\n"
+                    "**Оплата может происходить:**\n"
+                    "• Рублями\n"
+                    "• USDT\n"
+                    "• Телеграмм звездами\n\n"
+                    "При получении аккаунта заходить с впном данной страны, которой вы купили аккаунт. Советую вам отлежаться пару дней и не трогать его, чтоб телеграмм не выдал вам спамблок, за спамблок я не ручаюсь.\n\n"
+                    "Приятных покупок!"
+                )
+                kb = {"inline_keyboard": [[{"text": "⬅️ Назад в меню", "callback_data": "main_menu"}]]}
+                # Используем editMessageText, чтобы не спамить новыми сообщениями
+                url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+                payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "Markdown", "reply_markup": kb}
+                req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+                urllib.request.urlopen(req)
+
+            elif data == "accounts":
+                products = get_products()
+                if not products:
+                    text = "😔 Товаров в наличии нет."
+                    kb = {"inline_keyboard": [[{"text": "⬅️ Назад в меню", "callback_data": "main_menu"}]]}
+                    url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+                    payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": kb}
+                    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+                    urllib.request.urlopen(req)
+                else:
+                    send_message(chat_id, "🛒 **Аккаунты в наличии:**")
+                    for p in products:
+                        text = f"✈️ **{p['flag']} {p['country']} {p['code']}**\n\n📝 {p['short_desc']}\n💰 Цена: {p['price']}\n📦 В наличии: {p['qty']} шт."
+                        msg = f"Привет! Хочу купить аккаунт {p['flag']} {p['country']} {p['code']}.\nСсылка на товар: {SITE_URL}/?item={p['id']}"
+                        buy_url = f"https://t.me/{TELEGRAM_USERNAME}?text={urllib.parse.quote(msg)}"
+                        kb = {"inline_keyboard": [[{"text": "🛍 Купить", "url": buy_url}]]}
+                        send_message(chat_id, text, kb)
+                    
+                    kb = {"inline_keyboard": [[{"text": "⬅️ Назад в меню", "callback_data": "main_menu"}]]}
+                    send_message(chat_id, "Выберите действие:", kb)
+
+            elif data == "stars_menu":
+                text = "⭐ **Курс Monero Store**\n1.5 RUB = 1 Звезда\n\nВыберите количество звезд:"
+                kb = {"inline_keyboard": []}
+                for amount in [50, 100, 200, 300, 400, 500, 1000]:
+                    kb["inline_keyboard"].append([{"text": f"{amount} звезд", "callback_data": f"buy_stars_{amount}"}])
+                kb["inline_keyboard"].append([{"text": "⬅️ Назад в меню", "callback_data": "main_menu"}])
+                url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+                payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "Markdown", "reply_markup": kb}
+                req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+                urllib.request.urlopen(req)
+
+            elif data.startswith("buy_stars_"):
+                amount = int(data.split("_")[2])
+                price = amount * 1.5
+                text = f"Отлично! С вас **{price} рублей** за {amount} звезд.\n\nНажмите кнопку ниже, чтобы связаться с продавцом:"
+                msg = f"Привет! Хочу купить у тебя {amount} звезд!"
+                buy_url = f"https://t.me/{TELEGRAM_USERNAME}?text={urllib.parse.quote(msg)}"
+                kb = {"inline_keyboard": [[{"text": "💬 Написать продавцу", "url": buy_url}], [{"text": "⬅️ Назад", "callback_data": "stars_menu"}]]}
+                url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+                payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "Markdown", "reply_markup": kb}
+                req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+                urllib.request.urlopen(req)
+
+            elif data == "main_menu":
+                kb = {
+                    "inline_keyboard": [
+                        [{"text": "🛒 Наличие аккаунтов", "callback_data": "accounts"}],
+                        [{"text": "⭐ Купить звезды", "callback_data": "stars_menu"}],
+                        [{"text": "📖 Инструкция", "callback_data": "instruction"}],
+                        [{"text": "🌐 Наш сайт", "url": SITE_URL}]
+                    ]
+                }
+                url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+                payload = {"chat_id": chat_id, "message_id": message_id, "text": "👋 Главное меню **Monero Store**\nВыберите действие:", "parse_mode": "Markdown", "reply_markup": kb}
+                req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+                urllib.request.urlopen(req)
+
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"OK")
