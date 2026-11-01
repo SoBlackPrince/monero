@@ -5,7 +5,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler
 
 BOT_TOKEN = "9018579736:AAFbUfg0YIRZnWGlEBAfw8qUC1w1xuuXbN4"
-SUPABASE_URL = "https://uhchxpzsnjcjddggqosh.supabase.co"
+SUPABASE_URL = "https://uhchxpzsnjcjdddgqosh.supabase.co/"
 SUPABASE_KEY = "sb_publishable_KtMIJ4h3tDuEF_p4c_7VIg_iViLfBQf"
 TELEGRAM_USERNAME = "BestMonero"
 SITE_URL = "https://monero-store.vercel.app"
