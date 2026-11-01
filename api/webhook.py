@@ -1,6 +1,6 @@
 import json
 import os
-import urllib.request
+import requests
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
 
