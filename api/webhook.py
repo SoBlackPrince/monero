@@ -24,12 +24,19 @@ def send_message(chat_id, text, reply_markup=None):
 
 def get_products():
     url = f"{SUPABASE_URL}/rest/v1/products?select=*&qty=gt.0"
-    req = urllib.request.Request(url, headers={'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'})
+    headers = {
+        'apikey': SUPABASE_KEY, 
+        'Authorization': f'Bearer {SUPABASE_KEY}',
+        'Content-Type': 'application/json'
+    }
     try:
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode())
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            print(f"SUPABASE ERROR: {response.status_code} - {response.text}")
+            return []
+        return response.json()
     except Exception as e:
-        print(f"Error fetching products: {e}")
+        print(f"FETCH ERROR: {e}")
         return []
 
 class handler(BaseHTTPRequestHandler):
